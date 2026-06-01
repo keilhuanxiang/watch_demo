@@ -395,9 +395,14 @@ static void ui_nav_load_photo(void)
 
 static void ui_nav_close_music_to_menu(void)
 {
-    music_player_close();
-    bsp_codec_deinit();
-    ui_runtime_set_active(UI_RUNTIME_TASK_MUSIC, false);
+    esp_err_t close_ret = music_player_close();
+    if (close_ret == ESP_OK) {
+        bsp_codec_deinit();
+        ui_runtime_set_active(UI_RUNTIME_TASK_MUSIC, false);
+    } else {
+        ESP_LOGW(TAG, "Skip codec deinit because music player close failed: %s",
+                 esp_err_to_name(close_ret));
+    }
     ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del,
                           &guider_ui.music_del, setup_scr_meau,
                           LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);

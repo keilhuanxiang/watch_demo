@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esp_err.h"
 #include <stdint.h>
 
 extern uint8_t g_sys_volume;
@@ -12,4 +13,4 @@ void music_player_cycle_mode(void);
 void music_player_on_screen_enter(void);
 void music_player_on_screen_exit(void);
 void music_player_reset_session(void);
-void music_player_close(void);
+esp_err_t music_player_close(void);

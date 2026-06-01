@@ -25,6 +25,8 @@ static const char *TAG = "music_player";
 
 #define MUSIC_PLAYER_TASK_PRIORITY 5
 #define MUSIC_PLAYER_TASK_CORE     1
+#define MUSIC_PLAYER_STOP_WAIT_MS  1200
+#define MUSIC_PLAYER_STOP_POLL_MS  20
 
 typedef struct {
     uint32_t total_ms;
@@ -260,6 +262,20 @@ static void music_player_progress_set_total(uint32_t total_ms, bool has_duration
     g_progress_state.total_ms = total_ms;
     g_progress_state.has_duration = has_duration;
     portEXIT_CRITICAL(&g_progress_lock);
+}
+
+static bool music_player_wait_idle(TickType_t timeout_ticks)
+{
+    TickType_t start_tick = xTaskGetTickCount();
+
+    while (audio_player_get_state() != AUDIO_PLAYER_STATE_IDLE) {
+        if ((xTaskGetTickCount() - start_tick) >= timeout_ticks) {
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(MUSIC_PLAYER_STOP_POLL_MS));
+    }
+
+    return true;
 }
 
 static void music_player_progress_set_format(uint32_t sample_rate,
@@ -758,13 +774,13 @@ void music_player_reset_session(void)
     music_player_progress_reset();
 }
 
-void music_player_close(void)
+esp_err_t music_player_close(void)
 {
     music_player_on_screen_exit();
-    music_player_reset_session();
 
     if (!g_player_initialized) {
-        return;
+        music_player_reset_session();
+        return ESP_OK;
     }
 
     g_ignore_next_idle_advance = true;
@@ -774,7 +790,25 @@ void music_player_close(void)
         ESP_LOGW(TAG, "audio_player_stop failed while closing player: %s",
                  esp_err_to_name(ret));
     }
+
+    if (!music_player_wait_idle(pdMS_TO_TICKS(MUSIC_PLAYER_STOP_WAIT_MS))) {
+        ESP_LOGW(TAG, "Timed out waiting for audio player to stop");
+        pa_en(0);
+        return ESP_ERR_TIMEOUT;
+    }
+
+    ret = audio_player_delete();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "audio_player_delete failed while closing player: %s",
+                 esp_err_to_name(ret));
+        pa_en(0);
+        return ret;
+    }
+    g_player_initialized = false;
+
     pa_en(0);
+    music_player_reset_session();
+    return ESP_OK;
 }
 
 void music_play(char *path)
