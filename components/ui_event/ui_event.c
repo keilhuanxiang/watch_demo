@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "bsp_codec.h"
 #include "gui_guider.h"
 #include "music_player.h"
 #include "rtc_time.h"
@@ -109,8 +110,25 @@ static const char *ui_main_clock_get_weekday(int weekday);
 static void ui_main_clock_refresh(void);
 static void ui_main_clock_timer_cb(lv_timer_t *timer);
 static void ui_main_status_update_locked(void);
-static void ui_main_status_update(void);
+static void ui_nav_async_cb(void *user_data);
+static void ui_nav_load_main(void);
+static void ui_nav_load_menu(void);
+static void ui_nav_load_music(bool from_file);
+static void ui_nav_load_wifi(void);
+static void ui_nav_load_camera(void);
+static void ui_nav_load_setting(void);
+static void ui_nav_load_file_from_menu(void);
+static void ui_nav_load_file_from_music(void);
+static void ui_nav_file_back(void);
+static void ui_nav_load_file_from_photo(void);
+static void ui_nav_load_photo(void);
+static void ui_nav_close_music_to_menu(void);
+static void ui_nav_leave_music_to_menu(void);
+static void ui_nav_close_camera_to_menu(void);
 void file_list_click_cb(lv_event_t *e);
+
+static bool s_ui_nav_pending = false;
+static ui_nav_target_t s_ui_nav_pending_target = UI_NAV_TARGET_MAIN;
 
 uint8_t ui_runtime_task_count(void)
 {
@@ -167,6 +185,242 @@ bool ui_runtime_can_start(ui_runtime_task_t task)
     }
 
     return ui_runtime_task_count() < 2U;
+}
+
+void ui_nav_request(ui_nav_target_t target)
+{
+    s_ui_nav_pending_target = target;
+
+    if (!s_ui_nav_pending) {
+        s_ui_nav_pending = true;
+        lv_async_call(ui_nav_async_cb, NULL);
+    }
+}
+
+static void ui_nav_async_cb(void *user_data)
+{
+    (void)user_data;
+
+    ui_nav_target_t target = s_ui_nav_pending_target;
+    s_ui_nav_pending = false;
+
+    switch (target) {
+    case UI_NAV_TARGET_MAIN:
+        ui_nav_load_main();
+        break;
+    case UI_NAV_TARGET_MENU:
+        ui_nav_load_menu();
+        break;
+    case UI_NAV_TARGET_MUSIC:
+        ui_nav_load_music(false);
+        break;
+    case UI_NAV_TARGET_MUSIC_FROM_FILE:
+        ui_nav_load_music(true);
+        break;
+    case UI_NAV_TARGET_WIFI:
+        ui_nav_load_wifi();
+        break;
+    case UI_NAV_TARGET_CAMERA:
+        ui_nav_load_camera();
+        break;
+    case UI_NAV_TARGET_SETTING:
+        ui_nav_load_setting();
+        break;
+    case UI_NAV_TARGET_FILE_FROM_MENU:
+        ui_nav_load_file_from_menu();
+        break;
+    case UI_NAV_TARGET_FILE_FROM_MUSIC:
+        ui_nav_load_file_from_music();
+        break;
+    case UI_NAV_TARGET_FILE_BACK:
+        ui_nav_file_back();
+        break;
+    case UI_NAV_TARGET_FILE_FROM_PHOTO:
+        ui_nav_load_file_from_photo();
+        break;
+    case UI_NAV_TARGET_PHOTO:
+        ui_nav_load_photo();
+        break;
+    case UI_NAV_TARGET_MENU_CLOSE_MUSIC:
+        ui_nav_close_music_to_menu();
+        break;
+    case UI_NAV_TARGET_MENU_LEAVE_MUSIC:
+        ui_nav_leave_music_to_menu();
+        break;
+    case UI_NAV_TARGET_MENU_CLOSE_CAMERA:
+        ui_nav_close_camera_to_menu();
+        break;
+    default:
+        break;
+    }
+}
+
+static void ui_nav_load_main(void)
+{
+    ui_load_scr_animation(&guider_ui, &guider_ui.Main, guider_ui.Main_del,
+                          &guider_ui.meau_del, setup_scr_Main,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_MAIN);
+    esp_event_post_to(ui_event_loop_handle, APP_EVENT, APP_MAIN_STATUS_UPDATE,
+                      NULL, 0, 0);
+}
+
+static void ui_nav_load_menu(void)
+{
+    lv_obj_t *act_scr = lv_screen_active();
+    bool *old_scr_del = &guider_ui.meau_del;
+
+    if (act_scr == guider_ui.Main) {
+        old_scr_del = &guider_ui.Main_del;
+    } else if (act_scr == guider_ui.music) {
+        old_scr_del = &guider_ui.music_del;
+    } else if (act_scr == guider_ui.file) {
+        old_scr_del = &guider_ui.file_del;
+    } else if (act_scr == guider_ui.wifi) {
+        old_scr_del = &guider_ui.wifi_del;
+    } else if (act_scr == guider_ui.camera) {
+        old_scr_del = &guider_ui.camera_del;
+    } else if (act_scr == guider_ui.setting) {
+        old_scr_del = &guider_ui.setting_del;
+    } else if (act_scr == guider_ui.photo) {
+        old_scr_del = &guider_ui.photo_del;
+    }
+
+    ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del,
+                          old_scr_del, setup_scr_meau,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_MENU);
+}
+
+static void ui_nav_load_music(bool from_file)
+{
+    bool *old_scr_del = from_file ? &guider_ui.file_del : &guider_ui.meau_del;
+    bool is_clean = from_file ? false : true;
+
+    ui_file_list_reset_page_state();
+    ui_file_list_invalidate_pager_controls();
+    ui_load_scr_animation(&guider_ui, &guider_ui.music, guider_ui.music_del,
+                          old_scr_del, setup_scr_music,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, is_clean, true);
+    ui_event_set_screen_state(UI_SCREEN_MUSIC);
+    music_player_on_screen_enter();
+}
+
+static void ui_nav_load_wifi(void)
+{
+    ui_load_scr_animation(&guider_ui, &guider_ui.wifi, guider_ui.wifi_del,
+                          &guider_ui.meau_del, setup_scr_wifi,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_WIFI);
+    wifi_ui_logic_on_screen_enter();
+}
+
+static void ui_nav_load_camera(void)
+{
+    if (!ui_runtime_can_start(UI_RUNTIME_TASK_CAMERA)) {
+        return;
+    }
+
+    ui_runtime_set_active(UI_RUNTIME_TASK_CAMERA, true);
+    ui_load_scr_animation(&guider_ui, &guider_ui.camera, guider_ui.camera_del,
+                          &guider_ui.meau_del, setup_scr_camera,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_CAMERA);
+    esp_event_post_to(ui_event_loop_handle, APP_EVENT, APP_CAMERA_ENTER,
+                      NULL, 0, 0);
+}
+
+static void ui_nav_load_setting(void)
+{
+    ui_load_scr_animation(&guider_ui, &guider_ui.setting, guider_ui.setting_del,
+                          &guider_ui.meau_del, setup_scr_setting,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_SETTING);
+}
+
+static void ui_nav_load_file_from_menu(void)
+{
+    ui_file_browser_set_entry(UI_FILE_ENTRY_MENU);
+    ui_load_scr_animation(&guider_ui, &guider_ui.file, guider_ui.file_del,
+                          &guider_ui.meau_del, setup_scr_file,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_FILE);
+    ui_file_browser_apply_entry_ui();
+    ui_file_browser_request_refresh(ui_file_browser_get_resume_dir(UI_FILE_ENTRY_MENU),
+                                    "");
+}
+
+static void ui_nav_load_file_from_music(void)
+{
+    ui_file_browser_set_entry(UI_FILE_ENTRY_MUSIC);
+    music_player_on_screen_exit();
+    ui_load_scr_animation(&guider_ui, &guider_ui.file, guider_ui.file_del,
+                          &guider_ui.music_del, setup_scr_file,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_FILE);
+    ui_file_browser_apply_entry_ui();
+    ui_file_browser_request_refresh(ui_file_browser_get_resume_dir(UI_FILE_ENTRY_MUSIC),
+                                    "");
+}
+
+static void ui_nav_file_back(void)
+{
+    ui_file_list_reset_page_state();
+    ui_file_list_invalidate_pager_controls();
+
+    if (g_file_browser_ctx.entry == UI_FILE_ENTRY_MUSIC) {
+        ui_nav_load_music(true);
+    } else {
+        ui_nav_load_menu();
+    }
+}
+
+static void ui_nav_load_file_from_photo(void)
+{
+    ui_load_scr_animation(&guider_ui, &guider_ui.file, guider_ui.file_del,
+                          &guider_ui.photo_del, setup_scr_file,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_FILE);
+    ui_file_browser_refresh_current_dir();
+}
+
+static void ui_nav_load_photo(void)
+{
+    ui_load_scr_animation(&guider_ui, &guider_ui.photo, guider_ui.photo_del,
+                          &guider_ui.file_del, setup_scr_photo,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_photo_view_apply();
+    ui_event_set_screen_state(UI_SCREEN_PHOTO);
+}
+
+static void ui_nav_close_music_to_menu(void)
+{
+    music_player_close();
+    bsp_codec_deinit();
+    ui_runtime_set_active(UI_RUNTIME_TASK_MUSIC, false);
+    ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del,
+                          &guider_ui.music_del, setup_scr_meau,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_MENU);
+}
+
+static void ui_nav_leave_music_to_menu(void)
+{
+    music_player_on_screen_exit();
+    ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del,
+                          &guider_ui.music_del, setup_scr_meau,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_MENU);
+}
+
+static void ui_nav_close_camera_to_menu(void)
+{
+    esp_event_post_to(ui_event_loop_handle, APP_EVENT, APP_CAMERA_EXIT,
+                      NULL, 0, 0);
+    ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del,
+                          &guider_ui.camera_del, setup_scr_meau,
+                          LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+    ui_event_set_screen_state(UI_SCREEN_MENU);
 }
 
 void ui_event_set_screen_state(ui_screen_state_t state)
@@ -446,46 +700,17 @@ void ui_event_refresh_main_clock(void)
 
 void ui_file_browser_open_from_menu(void)
 {
-    ui_file_browser_set_entry(UI_FILE_ENTRY_MENU);
-    ui_load_scr_animation(&guider_ui, &guider_ui.file, guider_ui.file_del,
-                          &guider_ui.meau_del, setup_scr_file, LV_SCR_LOAD_ANIM_NONE, 0, 0,
-                          true, true);
-    ui_event_set_screen_state(UI_SCREEN_FILE);
-    ui_file_browser_apply_entry_ui();
-    ui_file_browser_request_refresh(ui_file_browser_get_resume_dir(UI_FILE_ENTRY_MENU),
-                                    "");
+    ui_nav_request(UI_NAV_TARGET_FILE_FROM_MENU);
 }
 
 void ui_file_browser_open_from_music(void)
 {
-    ui_file_browser_set_entry(UI_FILE_ENTRY_MUSIC);
-    music_player_on_screen_exit();
-    ui_load_scr_animation(&guider_ui, &guider_ui.file, guider_ui.file_del,
-                          &guider_ui.music_del, setup_scr_file, LV_SCR_LOAD_ANIM_NONE, 0, 0,
-                          true, true);
-    ui_event_set_screen_state(UI_SCREEN_FILE);
-    ui_file_browser_apply_entry_ui();
-    ui_file_browser_request_refresh(ui_file_browser_get_resume_dir(UI_FILE_ENTRY_MUSIC),
-                                    "");
+    ui_nav_request(UI_NAV_TARGET_FILE_FROM_MUSIC);
 }
 
 void ui_file_browser_handle_back(void)
 {
-    ui_file_list_reset_page_state();
-    ui_file_list_invalidate_pager_controls();
-
-    if (g_file_browser_ctx.entry == UI_FILE_ENTRY_MUSIC) {
-        ui_load_scr_animation(&guider_ui, &guider_ui.music, guider_ui.music_del,
-                              &guider_ui.file_del, setup_scr_music, LV_SCR_LOAD_ANIM_NONE,
-                              0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MUSIC);
-        music_player_on_screen_enter();
-    } else {
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del,
-                              &guider_ui.file_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE,
-                              0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
-    }
+    ui_nav_request(UI_NAV_TARGET_FILE_BACK);
 }
 
 void ui_file_browser_open_parent_dir(void)
@@ -979,14 +1204,10 @@ void my_ui_task(void *par)
         }
         case MUSIC_LIST_RESQUEST:
             ESP_LOGI(TAG, "Received music file: %s", (char *)received_msg.data);
-            if (ui_event_get_screen_state() != UI_SCREEN_MUSIC) {
-                ui_file_list_reset_page_state();
-                ui_file_list_invalidate_pager_controls();
-                ui_load_scr_animation(&guider_ui, &guider_ui.music, guider_ui.music_del,
-                                      &guider_ui.file_del, setup_scr_music,
-                                      LV_SCR_LOAD_ANIM_NONE, 0, 0, false, true);
-                ui_event_set_screen_state(UI_SCREEN_MUSIC);
-                music_player_on_screen_enter();
+            if (ui_event_get_screen_state() != UI_SCREEN_MUSIC &&
+                !(s_ui_nav_pending &&
+                  s_ui_nav_pending_target == UI_NAV_TARGET_MUSIC_FROM_FILE)) {
+                ui_nav_load_music(true);
             }
             free(received_msg.data);
             break;
@@ -1067,13 +1288,7 @@ void file_list_click_cb(lv_event_t *e)
             return;
         }
 
-        ui_file_list_reset_page_state();
-        ui_file_list_invalidate_pager_controls();
-        ui_load_scr_animation(&guider_ui, &guider_ui.music, guider_ui.music_del,
-                              &guider_ui.file_del, setup_scr_music,
-                              LV_SCR_LOAD_ANIM_NONE, 0, 0, false, true);
-        ui_event_set_screen_state(UI_SCREEN_MUSIC);
-        music_player_on_screen_enter();
+        ui_nav_request(UI_NAV_TARGET_MUSIC_FROM_FILE);
 
         snprintf(data.name, sizeof(data.name), "%s", selected_name);
         ui_join_sd_path(data.current_path, sizeof(data.current_path), sd_current_dir,
@@ -1083,11 +1298,7 @@ void file_list_click_cb(lv_event_t *e)
     } else if (ui_file_type_is_image(file_type)) {
         ui_join_sd_path(full_path, sizeof(full_path), sd_current_dir, selected_name);
         ui_photo_view_prepare(selected_name, full_path);
-        ui_load_scr_animation(&guider_ui, &guider_ui.photo, guider_ui.photo_del,
-                              &guider_ui.file_del, setup_scr_photo,
-                              LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_photo_view_apply();
-        ui_event_set_screen_state(UI_SCREEN_PHOTO);
+        ui_nav_request(UI_NAV_TARGET_PHOTO);
     }
 }
 
@@ -1107,16 +1318,6 @@ static void user_music_play_response_handler(void *arg, esp_event_base_t event_b
         .data = copy,
     };
     xQueueSend(ui_message_queue, &msg, portMAX_DELAY);
-}
-
-static void ui_main_status_update(void)
-{
-    if (!lvgl_port_lock(UI_LVGL_LOCK_TIMEOUT_MS)) 
-    {
-        return;
-    }
-    ui_main_status_update_locked();
-    lvgl_port_unlock();
 }
 
 static void ui_main_status_update_locked(void)

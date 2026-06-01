@@ -13,6 +13,27 @@
 #include "widgets_init.h"
 #include "custom.h"
 
+static void ui_mark_scr_created(lv_ui *ui, lv_obj_t **scr)
+{
+    if (scr == &ui->Main) {
+        ui->Main_del = false;
+    } else if (scr == &ui->meau) {
+        ui->meau_del = false;
+    } else if (scr == &ui->music) {
+        ui->music_del = false;
+    } else if (scr == &ui->file) {
+        ui->file_del = false;
+    } else if (scr == &ui->wifi) {
+        ui->wifi_del = false;
+    } else if (scr == &ui->camera) {
+        ui->camera_del = false;
+    } else if (scr == &ui->photo) {
+        ui->photo_del = false;
+    } else if (scr == &ui->setting) {
+        ui->setting_del = false;
+    }
+}
+
 void ui_init_style(lv_style_t * style)
 {
     if (style->prop_cnt > 1)
@@ -32,14 +53,14 @@ void ui_load_scr_animation(lv_ui *ui, lv_obj_t ** new_scr, bool new_scr_del, boo
         gg_edata_task_clear(act_scr);
     }
 #endif
-    if (auto_del && is_clean) {
-        lv_obj_clean(act_scr);
-    }
+    (void)is_clean;
+    (void)auto_del;
     if (new_scr_del) {
         setup_scr(ui);
+        ui_mark_scr_created(ui, new_scr);
     }
-    lv_screen_load_anim(*new_scr, anim_type, time, delay, auto_del);
-    *old_scr_del = auto_del;
+    lv_screen_load_anim(*new_scr, anim_type, time, delay, false);
+    *old_scr_del = false;
 }
 
 void ui_animation(void * var, uint32_t duration, int32_t delay, int32_t start_value, int32_t end_value, lv_anim_path_cb_t path_cb,
@@ -95,6 +116,7 @@ void setup_ui(lv_ui *ui)
     init_keyboard(ui);
     custom_init(ui);
     setup_scr_Main(ui);
+    ui->Main_del = false;
     lv_screen_load(ui->Main);
 }
 

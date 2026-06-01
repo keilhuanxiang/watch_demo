@@ -32,8 +32,7 @@ static void Main_btn_meau_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del, &guider_ui.Main_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
+        ui_nav_request(UI_NAV_TARGET_MENU);
         break;
     }
     default:
@@ -52,9 +51,7 @@ static void meau_btn_home_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.Main, guider_ui.Main_del, &guider_ui.meau_del, setup_scr_Main, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MAIN);
-        esp_event_post_to(ui_event_loop_handle, APP_EVENT, APP_MAIN_STATUS_UPDATE, 0, 0, portMAX_DELAY);
+        ui_nav_request(UI_NAV_TARGET_MAIN);
         break;
     }
     default:
@@ -77,19 +74,8 @@ static void meau_btn_music_event_handler (lv_event_t *e)
             break;
         }
 
-        ui_load_scr_animation(&guider_ui, &guider_ui.music, guider_ui.music_del, &guider_ui.meau_del, setup_scr_music, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MUSIC);
-        int volume = get_sys_volume();
-        if(volume == 0)
-            lv_label_set_text(guider_ui.music_btn_volume_label, LV_SYMBOL_MUTE); 
-        else if(volume <= 60 && volume > 0)
-            lv_label_set_text(guider_ui.music_btn_volume_label, LV_SYMBOL_VOLUME_MID); 
-        else
-            lv_label_set_text(guider_ui.music_btn_volume_label, LV_SYMBOL_VOLUME_MAX); 
-        bsp_codec_volume_set(volume, NULL);
-        lv_slider_set_value(guider_ui.music_slider_volume, volume, LV_ANIM_OFF);  
-        music_player_on_screen_enter();
         ui_runtime_set_active(UI_RUNTIME_TASK_MUSIC, true);
+        ui_nav_request(UI_NAV_TARGET_MUSIC);
         break;
     }
     default:
@@ -103,9 +89,7 @@ static void meau_btn_wifi_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.wifi, guider_ui.wifi_del, &guider_ui.meau_del, setup_scr_wifi, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_WIFI);
-        wifi_ui_logic_on_screen_enter();
+        ui_nav_request(UI_NAV_TARGET_WIFI);
         break;
     }
     default:
@@ -123,10 +107,7 @@ static void meau_btn_camera_event_handler (lv_event_t *e)
             break;
         }
 
-        ui_runtime_set_active(UI_RUNTIME_TASK_CAMERA, true);
-        ui_load_scr_animation(&guider_ui, &guider_ui.camera, guider_ui.camera_del, &guider_ui.meau_del, setup_scr_camera, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_CAMERA);
-        esp_event_post_to(ui_event_loop_handle, APP_EVENT, APP_CAMERA_ENTER, NULL, 0, portMAX_DELAY);
+        ui_nav_request(UI_NAV_TARGET_CAMERA);
         break;
     }
     default:
@@ -154,7 +135,7 @@ static void meau_btn_setting_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.setting, guider_ui.setting_del, &guider_ui.meau_del, setup_scr_setting, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
+        ui_nav_request(UI_NAV_TARGET_SETTING);
         break;
     }
     default:
@@ -178,11 +159,7 @@ static void music_btn_close_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        music_player_close();
-        bsp_codec_deinit();
-        ui_runtime_set_active(UI_RUNTIME_TASK_MUSIC, false);
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del, &guider_ui.music_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
+        ui_nav_request(UI_NAV_TARGET_MENU_CLOSE_MUSIC);
         break;
     }
     default:
@@ -313,9 +290,7 @@ static void music_btn_leave_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        music_player_on_screen_exit();
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del, &guider_ui.music_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
+        ui_nav_request(UI_NAV_TARGET_MENU_LEAVE_MUSIC);
         break;
     }
     default:
@@ -376,8 +351,7 @@ static void wifi_btn_close_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del, &guider_ui.wifi_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
+        ui_nav_request(UI_NAV_TARGET_MENU);
         break;
     }
     default:
@@ -512,9 +486,7 @@ static void camera_btn_close_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        esp_event_post_to(ui_event_loop_handle, APP_EVENT, APP_CAMERA_EXIT, NULL, 0, portMAX_DELAY);
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del, &guider_ui.camera_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
+        ui_nav_request(UI_NAV_TARGET_MENU_CLOSE_CAMERA);
         break;
     }
     default:
@@ -533,11 +505,7 @@ static void photo_btn_close_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.file, guider_ui.file_del,
-                              &guider_ui.photo_del, setup_scr_file,
-                              LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_FILE);
-        ui_file_browser_refresh_current_dir();
+        ui_nav_request(UI_NAV_TARGET_FILE_FROM_PHOTO);
         break;
     }
     default:
@@ -557,8 +525,7 @@ static void setting_list_1_item0_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        ui_load_scr_animation(&guider_ui, &guider_ui.meau, guider_ui.meau_del, &guider_ui.setting_del, setup_scr_meau, LV_SCR_LOAD_ANIM_NONE, 0, 0, true, true);
-        ui_event_set_screen_state(UI_SCREEN_MENU);
+        ui_nav_request(UI_NAV_TARGET_MENU);
         break;
     }
     default:

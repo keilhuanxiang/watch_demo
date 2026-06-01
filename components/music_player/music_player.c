@@ -24,7 +24,7 @@
 static const char *TAG = "music_player";
 
 #define MUSIC_PLAYER_TASK_PRIORITY 5
-#define MUSIC_PLAYER_TASK_CORE     0
+#define MUSIC_PLAYER_TASK_CORE     1
 
 typedef struct {
     uint32_t total_ms;
